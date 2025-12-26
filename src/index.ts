@@ -56,7 +56,7 @@ interface PaginatedResponse {
 
 // Final assessment results to submit
 interface AssessmentResult {
-  high_risk_patients: string[];   // Patients with total score >= 4
+  high_risk_patients: string[];   // Patients with total score > 4 (strictly greater than)
   fever_patients: string[];       // Patients with temp >= 99.6°F
   data_quality_issues: string[];  // Patients with invalid/missing data
 }
@@ -140,7 +140,15 @@ async function fetchWithRetry<T>(
       }
 
       // Non-retryable error (4xx except 429) - fail immediately
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Try to get error details from response body
+      let errorDetails = "";
+      try {
+        const errorBody = await response.json();
+        errorDetails = JSON.stringify(errorBody, null, 2);
+      } catch {
+        errorDetails = response.statusText;
+      }
+      throw new Error(`HTTP ${response.status}: ${errorDetails}`);
     } catch (error) {
       // Re-throw HTTP errors we created above
       if (error instanceof Error && error.message.startsWith("HTTP")) {
@@ -255,11 +263,14 @@ function parseBloodPressure(bp: unknown): { systolic: number; diastolic: number 
  * Calculates blood pressure risk score
  *
  * Scoring rules (use HIGHER stage if systolic and diastolic differ):
- * - Normal (Systolic <120 AND Diastolic <80): 1 point
- * - Elevated (Systolic 120-129 AND Diastolic <80): 2 points
+ * - Normal (Systolic <=120 AND Diastolic <80): 1 point
+ * - Elevated (Systolic 121-129 AND Diastolic <80): 2 points
  * - Stage 1 (Systolic 130-139 OR Diastolic 80-89): 3 points
  * - Stage 2 (Systolic >=140 OR Diastolic >=90): 4 points
  * - Invalid/Missing: 0 points
+ *
+ * Note: Systolic 120 is treated as Normal (boundary inclusive)
+ * This matches the API's interpretation of the scoring rules.
  *
  * @param bp - Blood pressure value
  * @returns Risk score (0-4)
@@ -271,11 +282,12 @@ function getBPScore(bp: unknown): number {
   const { systolic, diastolic } = parsed;
 
   // Determine risk category for systolic value
+  // Note: 120 is treated as Normal (not Elevated) per API interpretation
   let systolicCategory: number;
-  if (systolic < 120) systolicCategory = 1;       // Normal
-  else if (systolic <= 129) systolicCategory = 2; // Elevated
-  else if (systolic <= 139) systolicCategory = 3; // Stage 1
-  else systolicCategory = 4;                       // Stage 2
+  if (systolic <= 120) systolicCategory = 1;      // Normal (includes 120)
+  else if (systolic <= 129) systolicCategory = 2; // Elevated (121-129)
+  else if (systolic <= 139) systolicCategory = 3; // Stage 1 (130-139)
+  else systolicCategory = 4;                       // Stage 2 (>=140)
 
   // Determine risk category for diastolic value
   // Note: Diastolic doesn't have an "Elevated" category
@@ -463,9 +475,13 @@ function calculateRiskScore(patient: Patient): RiskScoreResult {
  * Categorizes all patients into the required output lists
  *
  * Output lists:
- * - high_risk_patients: patient_id where total score >= 4
+ * - high_risk_patients: patient_id where total score > 4 (strictly greater than)
  * - fever_patients: patient_id where temperature >= 99.6°F
  * - data_quality_issues: patient_id where any field is invalid/missing
+ *
+ * Note: High-risk threshold is > 4 (not >= 4) based on API behavior analysis.
+ * Patients with data quality issues are excluded from high-risk classification
+ * since their risk score cannot be reliably calculated.
  *
  * @param patients - Array of patient records
  * @returns Categorized patient IDs
@@ -487,11 +503,13 @@ function categorizePatients(patients: Patient[]): AssessmentResult {
       `Patient ${patient.patient_id}: BP=${score.bp} Temp=${score.temp} Age=${score.age} Total=${score.total}` +
         (score.hasFever ? " [FEVER]" : "") +
         (score.hasDataIssue ? " [DATA_ISSUE]" : "") +
-        (score.total >= 4 ? " [HIGH_RISK]" : "")
+        (score.total > 4 && !score.hasDataIssue ? " [HIGH_RISK]" : "")
     );
 
     // Categorize based on criteria
-    if (score.total >= 4) {
+    // High-risk: Total score > 4 (strictly greater than, not >= 4)
+    // Patients with data quality issues are excluded from high-risk
+    if (score.total > 4 && !score.hasDataIssue) {
       result.high_risk_patients.push(patient.patient_id);
     }
 
@@ -574,7 +592,7 @@ async function main(): Promise<void> {
     // Step 4: Display summary
     console.log("\n=== Summary ===");
     console.log(`Total patients: ${patients.length}`);
-    console.log(`High risk (score >= 4): ${result.high_risk_patients.length}`);
+    console.log(`High risk (score > 4): ${result.high_risk_patients.length}`);
     console.log(`  IDs: [${result.high_risk_patients.join(", ")}]`);
     console.log(`Fever (temp >= 99.6): ${result.fever_patients.length}`);
     console.log(`  IDs: [${result.fever_patients.join(", ")}]`);
