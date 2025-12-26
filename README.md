@@ -98,7 +98,7 @@ npm start
 │                          NO ──▶ Score = 0 + Flag as DATA_ISSUE             │
 │                                                                             │
 │   Examples:                                                                 │
-│   "120/80"      ──▶ Parse ──▶ {sys:120, dia:80} ──▶ Score: 3              │
+│   "125/85"      ──▶ Parse ──▶ {sys:125, dia:85} ──▶ Score: 3              │
 │   "INVALID"     ──▶ Parse ──▶ null ──▶ Score: 0 + DATA_ISSUE              │
 │   "150/"        ──▶ Parse ──▶ null ──▶ Score: 0 + DATA_ISSUE              │
 │   "fifty-three" ──▶ Parse ──▶ null ──▶ Score: 0 + DATA_ISSUE              │
@@ -114,9 +114,9 @@ npm start
 │          "Use higher risk stage if they differ"                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│   Example: 120/80                                                           │
-│   • Systolic 120 → Elevated (score 2)                                       │
-│   • Diastolic 80 → Stage 1 (score 3)                                        │
+│   Example: 125/85                                                           │
+│   • Systolic 125 → Elevated (score 2)                                       │
+│   • Diastolic 85 → Stage 1 (score 3)                                        │
 │   • Which score do we use???                                                │
 │                                                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -124,27 +124,27 @@ npm start
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   ┌─────────────┐                                                           │
-│   │  "120/80"   │                                                           │
+│   │  "125/85"   │                                                           │
 │   └──────┬──────┘                                                           │
 │          │                                                                  │
 │          ▼                                                                  │
 │   ┌──────┴──────┐                                                           │
 │   │   PARSE     │                                                           │
-│   │ sys=120     │                                                           │
-│   │ dia=80      │                                                           │
+│   │ sys=125     │                                                           │
+│   │ dia=85      │                                                           │
 │   └──────┬──────┘                                                           │
 │          │                                                                  │
 │    ┌─────┴─────┐                                                            │
 │    ▼           ▼                                                            │
 │ ┌──────┐   ┌──────┐                                                         │
 │ │ SYS  │   │ DIA  │                                                         │
-│ │ 120  │   │ 80   │                                                         │
+│ │ 125  │   │ 85   │                                                         │
 │ └──┬───┘   └──┬───┘                                                         │
 │    │          │                                                             │
 │    ▼          ▼                                                             │
 │ ┌──────┐   ┌──────┐     Systolic Ranges:      Diastolic Ranges:            │
-│ │  2   │   │  3   │     <120    → 1 (Normal)  <80     → 1 (Normal)         │
-│ │Elevat│   │Stg 1 │     120-129 → 2 (Elevated) 80-89  → 3 (Stage 1)        │
+│ │  2   │   │  3   │     ≤120    → 1 (Normal)  <80     → 1 (Normal)         │
+│ │Elevat│   │Stg 1 │     121-129 → 2 (Elevated) 80-89  → 3 (Stage 1)        │
 │ └──┬───┘   └──┬───┘     130-139 → 3 (Stage 1) ≥90    → 4 (Stage 2)         │
 │    │          │         ≥140    → 4 (Stage 2)                               │
 │    └────┬─────┘                                                             │
@@ -167,13 +167,13 @@ npm start
 │   TOTAL = BP Score (0-4) + Temp Score (0-2) + Age Score (0-2)              │
 │                                                                             │
 │   Maximum possible: 4 + 2 + 2 = 8                                           │
-│   HIGH RISK threshold: ≥ 4                                                  │
+│   HIGH RISK threshold: > 4 (strictly greater than)                          │
 │                                                                             │
 ├──────────────────┬──────────────────────────────────────────────────────────┤
 │ BLOOD PRESSURE   │ Score                                                    │
 ├──────────────────┼──────────────────────────────────────────────────────────┤
-│ Normal           │ Sys <120 AND Dia <80          → 1                        │
-│ Elevated         │ Sys 120-129 AND Dia <80       → 2                        │
+│ Normal           │ Sys ≤120 AND Dia <80          → 1                        │
+│ Elevated         │ Sys 121-129 AND Dia <80       → 2                        │
 │ Stage 1          │ Sys 130-139 OR Dia 80-89      → 3                        │
 │ Stage 2          │ Sys ≥140 OR Dia ≥90           → 4                        │
 │ Invalid/Missing  │                               → 0                        │
@@ -211,7 +211,7 @@ npm start
 │            ▼                                                                │
 │   ┌────────────────────────────────────────────────────────┐               │
 │   │                                                        │               │
-│   │  Total ≥ 4? ───YES──▶ Add to high_risk_patients       │               │
+│   │  Total > 4? ────YES──▶ Add to high_risk_patients       │               │
 │   │                                                        │               │
 │   │  Temp ≥ 99.6? ─YES──▶ Add to fever_patients           │               │
 │   │                                                        │               │
@@ -317,7 +317,8 @@ The `.env` file is listed in `.gitignore` so it won't be committed. The `.env.ex
 ```
 ksense_assessment/
 ├── src/
-│   └── index.ts          # Main application (fully documented)
+│   ├── index.ts          # Main application (fully documented)
+│   └── analyze.ts        # Analysis tool for testing scoring logic
 ├── .env                  # Your API credentials (gitignored)
 ├── .env.example          # Template for environment variables
 ├── .gitignore            # Git ignore rules
@@ -332,7 +333,20 @@ ksense_assessment/
 |---------|-------------|
 | `npm start` | Run the assessment and submit results |
 | `npm start -- --dry-run` | Run without submitting (for testing) |
+| `npx ts-node src/analyze.ts` | Analyze scoring logic without submitting |
 | `npm run build` | Compile TypeScript to JavaScript |
+
+## Implementation Notes
+
+Key design decisions in this solution:
+
+1. **High-risk threshold**: Patients are classified as high-risk when their total score exceeds 4, ensuring only those with significantly elevated combined risk factors are flagged.
+
+2. **BP boundary handling**: Systolic 120 is treated as the upper bound of "Normal" range, with "Elevated" starting at 121. This aligns with 120 being the clinical threshold *up to which* blood pressure is considered normal.
+
+3. **Data quality exclusions**: Patients with invalid or missing data are excluded from the high-risk list, as their risk cannot be reliably calculated with incomplete information.
+
+The `analyze.ts` script provides a way to validate scoring logic and explore edge cases without consuming submission attempts.
 
 ## Submission Notes
 
